@@ -2,48 +2,62 @@ import requests
 import json
 import sys
 
-def generate_gam_formula():
+def get_latest_gam_release_info():
     """
-    Fetches the latest GAM release data from the GitHub API and generates a
-    Homebrew formula file named 'gam.rb', including Python dependency and symlink logic.
+    Fetches the latest GAM release data from the GitHub API.
+    Returns the JSON data or None on failure.
     """
     github_api_url = "https://api.github.com/repos/GAM-team/GAM/releases/latest"
 
     try:
         response = requests.get(github_api_url)
         response.raise_for_status()
-        release_data = response.json()
+        return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data from GitHub API: {e}", file=sys.stderr)
+        return None
+
+def find_asset_info(assets, arch):
+    """
+    Finds the download URL and SHA256 checksum for a specific architecture.
+    """
+    url = None
+    sha256 = None
+
+    # Sort assets by name to ensure we get the latest macOS version if multiple exist
+    assets.sort(key=lambda x: x['name'], reverse=True)
+
+    for asset in assets:
+        if 'macos' in asset['name'] and arch in asset['name'] and '.tar.xz' in asset['name']:
+            # We found a matching asset.
+            url = asset['browser_download_url']
+            sha256 = asset['digest'].split(':')[1]
+            break
+
+    return url, sha256
+
+def generate_gam_formula():
+    """
+    Generates a Homebrew formula file named 'gam.rb'.
+    """
+    release_data = get_latest_gam_release_info()
+    if not release_data:
         return
 
-    # Extract relevant information
+    # Extract version from the tag name, e.g., 'v7.18.03' -> '7.18.03'
     version = release_data['tag_name'].lstrip('v')
 
-    # Initialize variables for the URLs and checksums
-    arm64_url = None
-    arm64_sha256 = None
-    x86_64_url = None
-    x86_64_sha256 = None
-
-    # Python version is hardcoded as per the error message.
-    # In a more advanced script, you might parse the version from the asset names.
-    python_version = "3.13"
-
-    # Find the correct assets for macOS
-    # Note: We're looking for the specific macOS version-dependent assets
-    # as per the example in the previous conversation.
-    for asset in release_data['assets']:
-        if 'macos' in asset['name'] and 'arm64' in asset['name'] and '.tar.xz' in asset['name']:
-            arm64_url = asset['browser_download_url']
-            arm64_sha256 = asset['digest'].split(':')[1]
-        elif 'macos' in asset['name'] and 'x86_64' in asset['name'] and '.tar.xz' in asset['name']:
-            x86_64_url = asset['browser_download_url']
-            x86_64_sha256 = asset['digest'].split(':')[1]
+    # Find assets for both macOS architectures
+    arm64_url, arm64_sha256 = find_asset_info(release_data['assets'], 'arm64')
+    x86_64_url, x86_64_sha256 = find_asset_info(release_data['assets'], 'x86_64')
 
     if not arm64_url or not x86_64_url:
         print("Could not find required macOS release assets in the latest release.", file=sys.stderr)
         return
+
+    # The python version is tied to the frozen executable. We'll use the latest
+    # version that works for the bundled app. As per the error message, this is 3.13.
+    python_version = "3.13"
 
     # --- Start of Homebrew Formula Template ---
     formula_template = f"""# frozen_string_literal: true
@@ -54,6 +68,8 @@ class Gam < Formula
   version "{version}"
   license "Apache-2.0"
 
+  # We need to install the full Python distribution to ensure all standard
+  # libraries are available to the bundled gam executable.
   depends_on "python@{python_version}"
 
   on_arm do
@@ -67,22 +83,27 @@ class Gam < Formula
   end
 
   def install
-    # Install the 'gam' executable to the libexec directory
+    # The downloaded tar.xz archive contains the 'gam' executable.
+    # We install it to the Homebrew `libexec` directory.
     libexec.install "gam"
 
-    # Symlink the Python shared library from the Homebrew Python installation
-    # to the location where 'gam' expects it to be.
-    # This resolves the 'no such file' error for libpython3.13.dylib.
-    python_lib_path = Formula["python@{python_version}"].opt_prefix/"Frameworks/Python.framework/Versions/{python_version}/lib/libpython{python_version}.dylib"
-    mkdir_p libexec/"lib"
-    ln_s python_lib_path, libexec/"lib/"
+    # Now, install the entire Homebrew Python installation as a dependency,
+    # and symlink all its files into the `libexec` directory.
+    # This ensures that the bundled `gam` executable can find all the
+    # standard Python libraries it needs.
+    libexec.install_symlink Dir[Formula["python@{python_version}"].opt_prefix/"*"]
 
-    # Symlink the gam executable to the Homebrew bin directory
-    bin.install_symlink libexec/"gam"
+    # We create a shim script to correctly set the PYTHONHOME environment variable
+    # before executing the gam binary. This tells the Python interpreter where
+    # to find its standard library modules (like 'encodings').
+    (bin/"gam").write_env_script(libexec/"gam",
+      # PYTHONHOME needs to point to the root of the Python installation.
+      PYTHONHOME: Formula["python@{python_version}"].opt_prefix
+    )
   end
 
   test do
-    system "{{bin}}/gam", "version"
+    system "#{bin}/gam", "version"
   end
 end
 """

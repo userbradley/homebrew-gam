@@ -6,6 +6,8 @@ class Gam < Formula
   version "7.18.03"
   license "Apache-2.0"
 
+  # We need to install the full Python distribution to ensure all standard
+  # libraries are available to the bundled gam executable.
   depends_on "python@3.13"
 
   on_arm do
@@ -19,21 +21,26 @@ class Gam < Formula
   end
 
   def install
-    # Install the 'gam' executable to the libexec directory
+    # The downloaded tar.xz archive contains the 'gam' executable.
+    # We install it to the Homebrew `libexec` directory.
     libexec.install "gam"
 
-    # Symlink the Python shared library from the Homebrew Python installation
-    # to the location where 'gam' expects it to be.
-    # This resolves the 'no such file' error for libpython3.13.dylib.
-    python_lib_path = Formula["python@3.13"].opt_prefix/"Frameworks/Python.framework/Versions/3.13/lib/libpython3.13.dylib"
-    mkdir_p libexec/"lib"
-    ln_s python_lib_path, libexec/"lib/"
+    # Now, install the entire Homebrew Python installation as a dependency,
+    # and symlink all its files into the `libexec` directory.
+    # This ensures that the bundled `gam` executable can find all the
+    # standard Python libraries it needs.
+    libexec.install_symlink Dir[Formula["python@3.13"].opt_prefix/"*"]
 
-    # Symlink the gam executable to the Homebrew bin directory
-    bin.install_symlink libexec/"gam"
+    # We create a shim script to correctly set the PYTHONHOME environment variable
+    # before executing the gam binary. This tells the Python interpreter where
+    # to find its standard library modules (like 'encodings').
+    (bin/"gam").write_env_script(libexec/"gam",
+      # PYTHONHOME needs to point to the root of the Python installation.
+      PYTHONHOME: Formula["python@3.13"].opt_prefix
+    )
   end
 
   test do
-    system "{bin}/gam", "version"
+    system "#<built-in function bin>/gam", "version"
   end
 end
