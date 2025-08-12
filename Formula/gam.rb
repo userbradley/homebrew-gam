@@ -22,7 +22,7 @@ class Gam < Formula
   end
 
   def install
-    # The downloaded archive contains a directory named "gam".
+    # The downloaded archive contains a single directory named "gam".
     # We install the entire contents of this directory into the libexec folder.
     libexec.install Dir["*"]
 
