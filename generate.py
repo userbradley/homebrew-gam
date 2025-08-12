@@ -1,19 +1,20 @@
 import requests
 import json
+import sys
 
 def generate_gam_formula():
     """
     Fetches the latest GAM release data from the GitHub API and generates a
-    Homebrew formula file named 'gam.rb'.
+    Homebrew formula file named 'gam.rb', including Python dependency and symlink logic.
     """
     github_api_url = "https://api.github.com/repos/GAM-team/GAM/releases/latest"
 
     try:
         response = requests.get(github_api_url)
-        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()
         release_data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching data from GitHub API: {e}")
+        print(f"Error fetching data from GitHub API: {e}", file=sys.stderr)
         return
 
     # Extract relevant information
@@ -25,18 +26,23 @@ def generate_gam_formula():
     x86_64_url = None
     x86_64_sha256 = None
 
+    # Python version is hardcoded as per the error message.
+    # In a more advanced script, you might parse the version from the asset names.
+    python_version = "3.13"
+
     # Find the correct assets for macOS
+    # Note: We're looking for the specific macOS version-dependent assets
+    # as per the example in the previous conversation.
     for asset in release_data['assets']:
         if 'macos' in asset['name'] and 'arm64' in asset['name'] and '.tar.xz' in asset['name']:
             arm64_url = asset['browser_download_url']
-            # The digest is in the format "sha256:checksum", so we split to get the value
             arm64_sha256 = asset['digest'].split(':')[1]
         elif 'macos' in asset['name'] and 'x86_64' in asset['name'] and '.tar.xz' in asset['name']:
             x86_64_url = asset['browser_download_url']
             x86_64_sha256 = asset['digest'].split(':')[1]
 
     if not arm64_url or not x86_64_url:
-        print("Could not find required macOS release assets in the latest release.")
+        print("Could not find required macOS release assets in the latest release.", file=sys.stderr)
         return
 
     # --- Start of Homebrew Formula Template ---
@@ -47,6 +53,8 @@ class Gam < Formula
   homepage "https://github.com/GAM-team/GAM"
   version "{version}"
   license "Apache-2.0"
+
+  depends_on "python@{python_version}"
 
   on_arm do
     url "{arm64_url}"
@@ -59,7 +67,17 @@ class Gam < Formula
   end
 
   def install
+    # Install the 'gam' executable to the libexec directory
     libexec.install "gam"
+
+    # Symlink the Python shared library from the Homebrew Python installation
+    # to the location where 'gam' expects it to be.
+    # This resolves the 'no such file' error for libpython3.13.dylib.
+    python_lib_path = Formula["python@{python_version}"].opt_prefix/"Frameworks/Python.framework/Versions/{python_version}/lib/libpython{python_version}.dylib"
+    mkdir_p libexec/"lib"
+    ln_s python_lib_path, libexec/"lib/"
+
+    # Symlink the gam executable to the Homebrew bin directory
     bin.install_symlink libexec/"gam"
   end
 
@@ -76,7 +94,7 @@ end
             f.write(formula_template)
         print("Successfully generated gam.rb file with the latest release information.")
     except IOError as e:
-        print(f"Error writing to gam.rb file: {e}")
+        print(f"Error writing to gam.rb file: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     generate_gam_formula()
