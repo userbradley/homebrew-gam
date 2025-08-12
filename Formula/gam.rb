@@ -13,7 +13,7 @@ class Gam < Formula
 
   on_arm do
     url "https://github.com/GAM-team/GAM/releases/download/v7.18.03/gam-7.18.03-macos15.5-arm64.tar.xz"
-    sha256 "7b518b300b2dea8b410a6ba81c943c1965044ee38e11531b996f438759a3559f0"
+    sha256 "7b518b300b2dea8b410a6ba81c943c1965044ee3811531b996f438759a3559f0"
   end
 
   on_intel do
