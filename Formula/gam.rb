@@ -29,14 +29,14 @@ class Gam < Formula
     # and symlink all its files into the `libexec` directory.
     # This ensures that the bundled `gam` executable can find all the
     # standard Python libraries it needs.
-    libexec.install_symlink Dir[Formula["python@3.13"].opt_prefix/"*"]
+    libexec.install_symlink Dir[Formula["python@3.11"].opt_prefix/"*"]
 
     # We create a shim script to correctly set the PYTHONHOME environment variable
     # before executing the gam binary. This tells the Python interpreter where
     # to find its standard library modules (like 'encodings').
     (bin/"gam").write_env_script(libexec/"gam",
       # PYTHONHOME needs to point to the root of the Python installation.
-      PYTHONHOME: Formula["python@3.13"].opt_prefix
+      PYTHONHOME: Formula["python@3.11"].opt_prefix
     )
   end
 
