@@ -24,14 +24,11 @@ def find_asset_info(assets, arch):
     url = None
     sha256 = None
 
-    # Sort assets by name to ensure we get the latest macOS version if multiple exist
-    assets.sort(key=lambda x: x['name'], reverse=True)
-
+    # The digest property is always `sha256:HEX_VALUE`
     for asset in assets:
         if 'macos' in asset['name'] and arch in asset['name'] and '.tar.xz' in asset['name']:
-            # We found a matching asset.
             url = asset['browser_download_url']
-            sha256 = asset['digest'].split(':')[1]
+            sha256 = asset['digest'].split(':')[-1]
             break
 
     return url, sha256
@@ -55,10 +52,6 @@ def generate_gam_formula():
         print("Could not find required macOS release assets in the latest release.", file=sys.stderr)
         return
 
-    # The python version is tied to the frozen executable. We'll use the latest
-    # version that works for the bundled app. As per the error message, this is 3.13.
-    python_version = "3.13"
-
     # --- Start of Homebrew Formula Template ---
     formula_template = f"""# frozen_string_literal: true
 
@@ -68,9 +61,10 @@ class Gam < Formula
   version "{version}"
   license "Apache-2.0"
 
-  # We need to install the full Python distribution to ensure all standard
-  # libraries are available to the bundled gam executable.
-  depends_on "python@{python_version}"
+  # The 'gam' installation package is a self-contained archive that includes its own
+  # frozen Python environment. Therefore, we do not need to declare a dependency on
+  # Homebrew's Python formula.
+  # The 'gam' executable expects its associated files to be in a specific relative path.
 
   on_arm do
     url "{arm64_url}"
@@ -83,27 +77,18 @@ class Gam < Formula
   end
 
   def install
-    # The downloaded tar.xz archive contains the 'gam' executable.
-    # We install it to the Homebrew `libexec` directory.
-    libexec.install "gam"
+    # The downloaded archive contains a directory named "gam".
+    # We install the entire contents of this directory into the libexec folder.
+    libexec.install Dir["*"]
 
-    # Now, install the entire Homebrew Python installation as a dependency,
-    # and symlink all its files into the `libexec` directory.
-    # This ensures that the bundled `gam` executable can find all the
-    # standard Python libraries it needs.
-    libexec.install_symlink Dir[Formula["python@{python_version}"].opt_prefix/"*"]
-
-    # We create a shim script to correctly set the PYTHONHOME environment variable
-    # before executing the gam binary. This tells the Python interpreter where
-    # to find its standard library modules (like 'encodings').
-    (bin/"gam").write_env_script(libexec/"gam",
-      # PYTHONHOME needs to point to the root of the Python installation.
-      PYTHONHOME: Formula["python@{python_version}"].opt_prefix
-    )
+    # The 'gam' executable is a file inside the directory we just installed.
+    # We create a symlink from this executable to the Homebrew 'bin' directory.
+    # This makes 'gam' available on the user's PATH.
+    bin.install_symlink libexec/"gam"
   end
 
   test do
-    system "#{bin}/gam", "version"
+    system bin/"gam", "version"
   end
 end
 """
