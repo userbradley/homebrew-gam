@@ -6,14 +6,14 @@ class Gam < Formula
   version "7.18.03"
   license "Apache-2.0"
 
-  # We need to explicitly declare a dependency on Python 3.13 because
-  # the 'gam' executable is a bundled Python application that expects
-  # to find the Python standard libraries.
-  depends_on "python@3.13"
+  # The 'gam' installation package is a self-contained archive that includes its own
+  # frozen Python environment. Therefore, we do not need to declare a dependency on
+  # Homebrew's Python formula.
+  # The 'gam' executable expects its associated files to be in a specific relative path.
 
   on_arm do
     url "https://github.com/GAM-team/GAM/releases/download/v7.18.03/gam-7.18.03-macos15.5-arm64.tar.xz"
-    sha256 "7b518b300b2dea8b410a6ba81c943c1965044ee3811531b996f438759a3559f0"
+    sha256 "7b518b300b2dea8b410a6ba81c943c1965044ee38e11531b996f438759a3559f0"
   end
 
   on_intel do
@@ -22,22 +22,17 @@ class Gam < Formula
   end
 
   def install
-    # The downloaded archive only contains the 'gam' executable.
-    # We place it in the `libexec` directory.
-    libexec.install "gam"
+    # The downloaded archive contains a directory named "gam".
+    # We install the entire contents of this directory into the libexec folder.
+    libexec.install Dir["*"]
 
-    # We create a simple shim script in the 'bin' directory.
-    # This script correctly sets the PYTHONHOME environment variable to the
-    # Homebrew Python installation before running the 'gam' executable.
-    # This is the correct way for the bundled app to find its dependencies.
-    (bin/"gam").write_env_script(libexec/"gam",
-      # Set PYTHONHOME to point to the root of the Homebrew-managed
-      # Python 3.13 installation.
-      PYTHONHOME: Formula["python@3.13"].opt_prefix
-    )
+    # The 'gam' executable is a file inside the directory we just installed.
+    # We create a symlink from this executable to the Homebrew 'bin' directory.
+    # This makes 'gam' available on the user's PATH.
+    bin.install_symlink libexec/"gam"
   end
 
   test do
-    system "#{bin}/gam", "version"
+    system bin/"gam", "version"
   end
 end
