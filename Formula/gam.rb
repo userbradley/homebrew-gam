@@ -6,8 +6,9 @@ class Gam < Formula
   version "7.18.03"
   license "Apache-2.0"
 
-  # We need to install the full Python distribution to ensure all standard
-  # libraries are available to the bundled gam executable.
+  # We need to explicitly declare a dependency on Python 3.13 because
+  # the 'gam' executable is a bundled Python application that expects
+  # to find the Python standard libraries.
   depends_on "python@3.13"
 
   on_arm do
@@ -21,26 +22,22 @@ class Gam < Formula
   end
 
   def install
-    # The downloaded tar.xz archive contains the 'gam' executable.
-    # We install it to the Homebrew `libexec` directory.
+    # The downloaded archive only contains the 'gam' executable.
+    # We place it in the `libexec` directory.
     libexec.install "gam"
 
-    # Now, install the entire Homebrew Python installation as a dependency,
-    # and symlink all its files into the `libexec` directory.
-    # This ensures that the bundled `gam` executable can find all the
-    # standard Python libraries it needs.
-    libexec.install_symlink Dir[Formula["python@3.11"].opt_prefix/"*"]
-
-    # We create a shim script to correctly set the PYTHONHOME environment variable
-    # before executing the gam binary. This tells the Python interpreter where
-    # to find its standard library modules (like 'encodings').
+    # We create a simple shim script in the 'bin' directory.
+    # This script correctly sets the PYTHONHOME environment variable to the
+    # Homebrew Python installation before running the 'gam' executable.
+    # This is the correct way for the bundled app to find its dependencies.
     (bin/"gam").write_env_script(libexec/"gam",
-      # PYTHONHOME needs to point to the root of the Python installation.
-      PYTHONHOME: Formula["python@3.11"].opt_prefix
+      # Set PYTHONHOME to point to the root of the Homebrew-managed
+      # Python 3.13 installation.
+      PYTHONHOME: Formula["python@3.13"].opt_prefix
     )
   end
 
   test do
-    system "#<built-in function bin>/gam", "version"
+    system "#{bin}/gam", "version"
   end
 end
